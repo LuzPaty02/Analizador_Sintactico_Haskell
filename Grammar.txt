@@ -1,0 +1,26 @@
+<program>       ::= "Programa" "{" <main_method> "}"
+<main_method>   ::= "principal()" "{" <statements> "}"
+<statements>    ::= <statement> <statements> | ε
+<statement>     ::= <declaration> | <assignment> | <comment>
+<declaration>   ::= <type> <variable_name> "=" <expression> ";"
+<assignment>    ::= <variable_name> "=" <expression> ";"
+<comment>       ::= "//" <comment_text> "\n"
+<type>          ::= "Entero" | "Real"
+<variable_name> ::= <identifier>
+<expression>    ::= <term> <expression_tail>
+<expression_tail>::= "+" <term> <expression_tail>
+                 | "-" <term> <expression_tail>
+                 | ε
+<term>          ::= <factor> <term_tail>
+<term_tail>     ::= "*" <factor> <term_tail>
+                 | "/" <factor> <term_tail>
+                 | ε
+<factor>        ::= <primary> <factor_tail>
+<factor_tail>   ::= "^" <primary> <factor_tail>
+                 | ε
+<primary>       ::= <variable_name> | <number> | "(" <expression> ")"
+<number>        ::= <integer> | <real>
+<integer>       ::= [0-9]+
+<real>          ::= [0-9]+"."[0-9]+
+<identifier>    ::= [a-zA-Z_][a-zA-Z_0-9]*
+<comment_text>  ::= .*

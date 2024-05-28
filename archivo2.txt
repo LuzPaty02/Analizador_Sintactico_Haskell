@@ -1,0 +1,15 @@
+Programa {
+
+  principal ()
+
+    {
+
+           Entero a = 4;
+
+           Real b = 5.8E-8;
+
+           Entero serie = a * b * c + 9;
+
+    }
+
+}
