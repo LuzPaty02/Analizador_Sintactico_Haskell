@@ -6,8 +6,8 @@ data TokenType = Variable | Assignment | Integer | Real | Operator String | Pare
     deriving (Show, Eq)
 
 -- Define a token data structure to hold the token value and its type
+  
 data Token = Token { tokenType :: TokenType, tokenValue :: String } deriving Show
-
 -- Tokenize a string into individual tokens
 tokenize :: String -> [Token]
 tokenize [] = []
@@ -24,7 +24,7 @@ tokenize s@(x:xs)
     | x `elem` "{}" = Token (Keys [x]) [x] : tokenize xs
     | otherwise = error $ "Unexpected token at: " ++ s
 
--- Get the token type for a token value
+-- Get the token type for a given token value  
 getToken :: String -> Token
 getToken tokenValue
     | all isDigitOrDot tokenValue =
@@ -36,15 +36,13 @@ getToken tokenValue
                     "Entero" -> Token (Keyword "Entero") tokenValue
                     "Real" -> Token (Keyword "Real") tokenValue
                     _ -> Token Variable tokenValue
-
 -- Check if a character is a digit, dot, or hyphen
 isDigitOrDot :: Char -> Bool
 isDigitOrDot c = isDigit c || c == '.' || c == '-' || c == 'E' || c == '+'
 
-
 -- Main function
 main :: IO ()
-main = do
+main = do  
     args <- getArgs
     case args of
         [fileName] -> do
@@ -56,10 +54,10 @@ main = do
         _ -> putStrLn "Usage: programName fileName"
 
 -- Print token with its TokenType
+  
 printToken :: Token -> IO ()
 printToken (Token tokenType tokenValue) = do
     putStrLn $ padRight 15 tokenValue ++ "\t" ++ showTokenType tokenType
-
 -- Convert TokenType to string representation
 showTokenType :: TokenType -> String
 showTokenType tokenType = case tokenType of
@@ -69,9 +67,9 @@ showTokenType tokenType = case tokenType of
                             Comment -> "Commentario"
                             Keyword kw -> kw
                             Keys kw -> keyType kw
+                            Variable -> "Variable"
                             _ -> show tokenType  -- For all other types, use the default show instance
-
--- Get the specific operation name for an operator token
+  
 operatorType :: String -> String
 operatorType "+" = "Suma"
 operatorType "-" = "Resta"
@@ -80,13 +78,11 @@ operatorType "/" = "Division"
 operatorType "=" = "Asignacion"
 operatorType ";" = "Punto y coma"
 operatorType other = other  -- Default to the original operator symbol for any other operator
-
--- Get the specific operation name for an operator token
+  
 parentesisType :: String -> String
 parentesisType "(" = "Parentesis que abre"
 parentesisType ")" = "Parentesis que cierra"
 parentesisType other = other  -- Default to the original operator symbol for any other operator
-
 -- Get the specific operation name for an operator token: Keys
 keyType :: String -> String
 keyType "{" = "Llave que abre"
@@ -96,4 +92,3 @@ keyType other = other  -- Default to the original operator symbol for any other 
 -- Helper function to pad a string to the right with spaces
 padRight :: Int -> String -> String
 padRight n s = s ++ replicate (n - length s) ' '
-
