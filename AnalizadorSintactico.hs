@@ -2,7 +2,7 @@ import System.Environment (getArgs)
 import Data.Char (isAlpha, isAlphaNum, isSpace, isDigit)
 
 -- Define token types
-data TokenType = Variable | Assignment | Integer | Real | Operator String | Parenthesis String | Comment | Keyword String |Keys String
+data TokenType = Variable | Assignment | Integer | Real | Operator String | Parenthesis String | Comment | Keyword String | Keys String
     deriving (Show, Eq)
 
 -- Define a token data structure to hold the token value and its type
@@ -21,7 +21,7 @@ tokenize s@(x:xs)
         in getToken token : tokenize rest
     | x `elem` "+-*/^=;" = Token (Operator [x]) [x] : tokenize xs
     | x `elem` "()=" = Token (Parenthesis [x]) [x] : tokenize xs
-    | x `elem` " {}" =Token(Keys [x])[x]:tokenize xs
+    | x `elem` "{}" = Token (Keys [x]) [x] : tokenize xs
     | otherwise = error $ "Unexpected token at: " ++ s
 
 -- Get the token type for a token value
@@ -41,6 +41,115 @@ getToken tokenValue
 isDigitOrDot :: Char -> Bool
 isDigitOrDot c = isDigit c || c == '.' || c == '-' || c == 'E' || c == '+'
 
+-- Define the abstract syntax tree (AST) data structures
+data AST
+    = ASTProgram [AST]
+    | ASTPrincipal [AST]
+    | ASTBlock [AST]
+    | ASTVariableDecl String AST
+    | ASTVariable String
+    | ASTInteger Int
+    | ASTReal Double
+    | ASTAssignment String AST
+    | ASTBinaryOp String AST AST
+    deriving Show
+
+-- Define a parser that produces an AST from tokens
+type Parser = [Token] -> (AST, [Token])
+
+-- Parse the whole program
+parseProgram :: Parser
+parseProgram (Token (Keyword "Programa") _ : Token (Keys "{") _ : tokens) =
+    let (principalTree, tokens') = parsePrincipal tokens
+    in (ASTProgram [principalTree], tokens')
+parseProgram tokens = error $ "Unexpected tokens: " ++ show tokens
+
+-- Parse the principal block
+parsePrincipal :: Parser
+parsePrincipal (Token (Keyword "principal") _ : Token (Keys "{") _ : tokens) =
+    let (blockTree, tokens') = parseBlock tokens
+    in (ASTPrincipal [blockTree], tokens')
+parsePrincipal tokens = error $ "Unexpected tokens: " ++ show tokens
+
+-- Parse a block of statements
+parseBlock :: Parser
+parseBlock (Token (Keys "{") _ : tokens) =
+    let (stmts, tokens') = parseStatements tokens
+    in case tokens' of
+         (Token (Keys "}") _ : tokens'') -> (ASTBlock stmts, tokens'')
+         _ -> error $ "Expected closing }"
+parseBlock tokens = error $ "Unexpected tokens: " ++ show tokens
+
+-- Parse a sequence of statements
+parseStatements :: [Token] -> ([AST], [Token])
+parseStatements tokens@(Token (Keys "}") _ : _) = ([], tokens)  -- Handle end of block
+parseStatements tokens =
+    let (stmt, tokens') = parseStatement tokens
+        (stmts, tokens'') = parseStatements tokens'
+    in case tokens'' of
+         (Token (Keys "}") _ : rest) -> (stmt : stmts, rest)  -- Check for end of block
+         _ -> (stmt : stmts, tokens'')
+
+
+-- Parse a single statement
+parseStatement :: Parser
+parseStatement tokens@(Token (Keyword "Entero") _ : _) = parseVarDecl tokens
+parseStatement tokens@(Token (Keyword "Real") _ : _) = parseVarDecl tokens
+parseStatement tokens = parseExprStatement tokens
+
+-- Parse a variable declaration
+parseVarDecl :: Parser
+parseVarDecl (Token (Keyword kw) _ : Token Variable v : Token Assignment _ : tokens) =
+    let (expr, tokens') = parseExpr tokens
+    in case tokens' of
+         (Token (Operator ";") _ : tokens'') -> (ASTVariableDecl v expr, tokens'')
+         _ -> error $ "Expected ; after variable declaration"
+parseVarDecl tokens = error $ "Unexpected tokens: " ++ show tokens
+
+-- Parse an expression statement
+parseExprStatement :: Parser
+parseExprStatement tokens =
+    let (expr, tokens') = parseExpr tokens
+    in case tokens' of
+         (Token (Operator ";") _ : tokens'') -> (expr, tokens'')
+         _ -> error $ "Expected ; after expression"
+
+-- Parse an expression
+parseExpr :: Parser
+parseExpr tokens = 
+    let (termTree, tokens') = parseTerm tokens
+    in parseExpr' termTree tokens'
+
+parseExpr' :: AST -> Parser
+parseExpr' left tokens@(Token (Operator op) _ : rest)
+    | op `elem` ["+", "-"] =
+        let (right, tokens'') = parseTerm rest
+        in parseExpr' (ASTBinaryOp op left right) tokens''
+parseExpr' left tokens = (left, tokens)
+
+-- Parse a term
+parseTerm :: Parser
+parseTerm tokens = 
+    let (facTree, tokens') = parseFac tokens
+    in parseTerm' facTree tokens'
+
+parseTerm' :: AST -> Parser
+parseTerm' left tokens@(Token (Operator op) _ : rest)
+    | op `elem` ["*", "/"] =
+        let (right, tokens'') = parseFac rest
+        in parseTerm' (ASTBinaryOp op left right) tokens''
+parseTerm' left tokens = (left, tokens)
+
+-- Parse a factor
+parseFac :: Parser
+parseFac (Token (Parenthesis "(") _ : tokens) = 
+    let (exprTree, Token (Parenthesis ")") _ : tokens') = parseExpr tokens
+    in (exprTree, tokens')
+parseFac (Token Variable v : tokens) = (ASTVariable v, tokens)
+parseFac (Token Integer n : tokens) = (ASTInteger (read n), tokens)
+parseFac (Token Real r : tokens) = (ASTReal (read r), tokens)
+parseFac tokens = error $ "Unexpected tokens: " ++ show tokens
+
 -- Main function
 main :: IO ()
 main = do
@@ -52,6 +161,9 @@ main = do
             putStrLn $ replicate 30 '-'
             let tokens = concatMap tokenize (lines content)
             mapM_ printToken tokens
+            let (ast, _) = parseProgram tokens
+            putStrLn "\nParsed AST:"
+            print ast
         _ -> putStrLn "Usage: programName fileName"
 
 -- Print token with its TokenType
@@ -68,6 +180,7 @@ showTokenType tokenType = case tokenType of
                             Comment -> "Commentario"
                             Keyword kw -> kw
                             Keys kw -> keyType kw
+                            Variable -> "Variable"
                             _ -> show tokenType  -- For all other types, use the default show instance
 
 -- Get the specific operation name for an operator token
@@ -77,8 +190,7 @@ operatorType "-" = "Resta"
 operatorType "*" = "Multiplicacion"
 operatorType "/" = "Division"
 operatorType "=" = "Asignacion"
-operatorType "^" = "Potencia"
-operatorType ";"="Punto y coma"
+operatorType ";" = "Punto y coma"
 operatorType other = other  -- Default to the original operator symbol for any other operator
 
 -- Get the specific operation name for an operator token
