@@ -21,7 +21,7 @@ tokenize s@(x:xs)
     | isSpace x = tokenize xs
     | isAlpha x = let (token, rest) = span (\c -> isAlphaNum c || c == '_') s
                   in getToken token : tokenize rest
-    | isDigit x || x == '.' || (x == '-' && (not (null xs) && (isDigit (head xs) || head xs == '.')))=
+    | isDigit x || x == '.' || (x == '-' && (not (null xs) && (isDigit (head xs) || head xs == '.'))) =
         let (token, rest) = span (\c -> isDigit c || c == '.' || c == 'E' || c == '-' || c == '+') s
         in getToken token : tokenize rest
     | x == '=' = Token Assign [x] : tokenize xs
@@ -30,7 +30,6 @@ tokenize s@(x:xs)
     | x `elem` "{}" = Token (Keys [x]) [x] : tokenize xs
     | otherwise = error $ "Unexpected token at: " ++ s
 
--- Get the token type for a given token value  
 getToken :: String -> Token
 getToken tokenValue
     | all isDigitOrDot tokenValue =
@@ -42,9 +41,12 @@ getToken tokenValue
                     "Entero" -> Token (Keyword "Entero") tokenValue
                     "Real" -> Token (Keyword "Real") tokenValue
                     _ -> Token Variable tokenValue
--- Check if a character is a digit, dot, or hyphen
+
 isDigitOrDot :: Char -> Bool
-isDigitOrDot c = isDigit(c) || c == '.' || c == 'E' || c == '+'
+isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+' || c == '-'
+
+
+
 
 -- Main function
 main :: IO ()
@@ -223,31 +225,49 @@ parseOpFactor op = do
 parseFactor :: TokenParser AST
 parseFactor = do
     debugPrint "Entering parseFactor"
-    f <- parseParenExpr <|> parseNumber <|> parseVariable
+    factor <- try parseParenExpr <|> try parseNumber <|> parseVariable
     debugPrint "Exiting parseFactor"
-    return f
+    return factor
 
 parseParenExpr :: TokenParser AST
-parseParenExpr = do
+parseParenExpr = try $ do
     debugPrint "Entering parseParenExpr"
-    parseToken (Token (Parenthesis "(") "(")
+    _ <- parseToken (Token (Parenthesis "(") "(")
     expr <- parseExpression
-    parseToken (Token (Parenthesis ")") ")")
+    _ <- parseToken (Token (Parenthesis ")") ")")
+    f<- parseFactor
     debugPrint "Exiting parseParenExpr"
     return expr
 
+
 parseNumber :: TokenParser AST
-parseNumber = tokenPrim show updatePos testNum
+parseNumber = try $ do
+    debugPrint "Entering parseNumber"
+    token <- tokenPrim show updatePos testNum
+    debugPrintWithToken "Read number token" token
+    let ast = case tokenType token of
+                Integer -> IntConst (read (tokenValue token))
+                Real -> RealConst (read (tokenValue token))
+    debugPrint "Exiting parseNumber"
+    return ast
   where
-    testNum (Token Integer n) = Just (IntConst (read n))
-    testNum (Token Real n) = Just (RealConst (read n))
+    testNum t@(Token Integer _) = Just t
+    testNum t@(Token Real _) = Just t
     testNum _ = Nothing
 
+
+
 parseVariable :: TokenParser AST
-parseVariable = tokenPrim show updatePos testVar
+parseVariable = do
+    debugPrint "Entering parseVariable"
+    token <- tokenPrim show updatePos testVar
+    debugPrintWithToken "Read variable token" token
+    debugPrint "Exiting parseVariable"
+    return $ Var (tokenValue token)
   where
-    testVar (Token Variable v) = Just (Var v)
+    testVar t@(Token Variable _) = Just t
     testVar _ = Nothing
+
 
 -- Implement parseVariableName function
 parseVariableName :: TokenParser String
