@@ -21,11 +21,12 @@ tokenize s@(x:xs)
     | isSpace x = tokenize xs
     | isAlpha x = let (token, rest) = span (\c -> isAlphaNum c || c == '_') s
                   in getToken token : tokenize rest
-    | isDigit x || x == '.' || (x == '-' && (not (null xs) && (isDigit (head xs) || head xs == '.'))) =
+    | isDigit x || x == '.' || (x == '-' && (not (null xs) && (isDigit (head xs) || head xs == '.')))=
         let (token, rest) = span (\c -> isDigit c || c == '.' || c == 'E' || c == '-' || c == '+') s
         in getToken token : tokenize rest
-    | x `elem` "+-*/^=;" = Token (Operator [x]) [x] : tokenize xs
-    | x `elem` "()=" = Token (Parenthesis [x]) [x] : tokenize xs
+    | x == '=' = Token Assign [x] : tokenize xs
+    | x `elem` "+-*/^;" = Token (Operator [x]) [x] : tokenize xs
+    | x `elem` "()" = Token (Parenthesis [x]) [x] : tokenize xs
     | x `elem` "{}" = Token (Keys [x]) [x] : tokenize xs
     | otherwise = error $ "Unexpected token at: " ++ s
 
@@ -43,7 +44,7 @@ getToken tokenValue
                     _ -> Token Variable tokenValue
 -- Check if a character is a digit, dot, or hyphen
 isDigitOrDot :: Char -> Bool
-isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+'
+isDigitOrDot c = isDigit(c) || c == '.' || c == 'E' || c == '+'
 
 -- Main function
 main :: IO ()
@@ -170,7 +171,6 @@ parseVarDecl = do
     debugPrint "Exiting parseVarDecl"
     return $ VarDecl t (AssignExpr (Var var) expr)
 
-
 parseExprStmt :: TokenParser AST
 parseExprStmt = do
     debugPrint "Entering parseExprStmt"
@@ -223,9 +223,9 @@ parseOpFactor op = do
 parseFactor :: TokenParser AST
 parseFactor = do
     debugPrint "Entering parseFactor"
-    factor <- parseParenExpr <|> parseNumber <|> parseVariable
+    f <- parseParenExpr <|> parseNumber <|> parseVariable
     debugPrint "Exiting parseFactor"
-    return $ Factor factor
+    return f
 
 parseParenExpr :: TokenParser AST
 parseParenExpr = do
@@ -237,49 +237,37 @@ parseParenExpr = do
     return expr
 
 parseNumber :: TokenParser AST
-parseNumber = do
-    debugPrint "Entering parseNumber"
-    token <- tokenPrim show updatePos testNum
-    debugPrintWithToken "Read token" token
-    debugPrint "Exiting parseNumber"
-    return $ case tokenType token of
-        Integer -> IntConst (read (tokenValue token))
-        Real -> RealConst (read (tokenValue token))
+parseNumber = tokenPrim show updatePos testNum
   where
-    testNum t@(Token Integer _) = Just t
-    testNum t@(Token Real _) = Just t
+    testNum (Token Integer n) = Just (IntConst (read n))
+    testNum (Token Real n) = Just (RealConst (read n))
     testNum _ = Nothing
 
 parseVariable :: TokenParser AST
-parseVariable = do
-    debugPrint "Entering parseVariable"
-    token <- tokenPrim show updatePos testVar
-    debugPrintWithToken "Read token" token
-    debugPrint "Exiting parseVariable"
-    return $ Var (tokenValue token)
+parseVariable = tokenPrim show updatePos testVar
   where
-    testVar t@(Token Variable _) = Just t
+    testVar (Token Variable v) = Just (Var v)
     testVar _ = Nothing
 
+-- Implement parseVariableName function
 parseVariableName :: TokenParser String
-parseVariableName = tokenPrim show updatePos testVar
+parseVariableName = tokenPrim show updatePos testVarName
   where
-    testVar (Token Variable var) = Just var
-    testVar _ = Nothing
+    testVarName (Token Variable varName) = Just varName
+    testVarName _ = Nothing
 
 parseToken :: Token -> TokenParser Token
-parseToken expected = tokenPrim show updatePos testTok
+parseToken expectedToken = tokenPrim show updatePos testToken
   where
-    testTok actual
-        | tokenType actual == tokenType expected = Just actual
-        | otherwise = Nothing
-
-updatePos :: SourcePos -> Token -> [Token] -> SourcePos
-updatePos pos _ (tok:_) = incSourceColumn pos (length (tokenValue tok))
-updatePos pos _ _ = pos
+    testToken token
+        | token == expectedToken = Just token
+        | otherwise = trace ("Expected: " ++ show expectedToken ++ ", but got: " ++ show token) Nothing
 
 debugPrint :: String -> TokenParser ()
 debugPrint msg = trace (msg ++ "\n") (return ())
 
 debugPrintWithToken :: String -> Token -> TokenParser ()
 debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (return ())
+
+updatePos :: SourcePos -> Token -> [Token] -> SourcePos
+updatePos pos _ _ = pos
