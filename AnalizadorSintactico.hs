@@ -1,13 +1,18 @@
 import System.Environment (getArgs)
 import Data.Char (isAlpha, isAlphaNum, isSpace, isDigit)
+import Text.Parsec
+import Text.Parsec.String (Parser)
+import Text.Parsec.Token (GenTokenParser(..))
+import Text.Parsec.Language (emptyDef)
+import Debug.Trace (trace)
 
 -- Define token types
-data TokenType = Variable | Assignment | Integer | Real | Operator String | Parenthesis String | Comment | Keyword String | Keys String
+data TokenType = Variable | Assign | Integer | Real | Operator String | Parenthesis String | Comment | Keyword String | Keys String
     deriving (Show, Eq)
 
 -- Define a token data structure to hold the token value and its type
-  
-data Token = Token { tokenType :: TokenType, tokenValue :: String } deriving Show
+data Token = Token { tokenType :: TokenType, tokenValue :: String } deriving (Show, Eq)
+
 -- Tokenize a string into individual tokens
 tokenize :: String -> [Token]
 tokenize [] = []
@@ -30,7 +35,7 @@ getToken tokenValue
     | all isDigitOrDot tokenValue =
         if '.' `elem` tokenValue || 'E' `elem` tokenValue then Token Real tokenValue else Token Integer tokenValue
     | otherwise = case tokenValue of
-                    "=" -> Token Assignment tokenValue
+                    "=" -> Token Assign tokenValue
                     "Programa" -> Token (Keyword "Programa") tokenValue
                     "principal" -> Token (Keyword "principal") tokenValue
                     "Entero" -> Token (Keyword "Entero") tokenValue
@@ -38,7 +43,7 @@ getToken tokenValue
                     _ -> Token Variable tokenValue
 -- Check if a character is a digit, dot, or hyphen
 isDigitOrDot :: Char -> Bool
-isDigitOrDot c = isDigit c || c == '.' || c == '-' || c == 'E' || c == '+'
+isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+'
 
 -- Main function
 main :: IO ()
@@ -51,13 +56,17 @@ main = do
             putStrLn $ replicate 30 '-'
             let tokens = concatMap tokenize (lines content)
             mapM_ printToken tokens
+            case parse parseProgram "" tokens of
+                Left err  -> print err
+                Right ast -> print ast
+        
         _ -> putStrLn "Usage: programName fileName"
 
 -- Print token with its TokenType
-  
 printToken :: Token -> IO ()
 printToken (Token tokenType tokenValue) = do
     putStrLn $ padRight 15 tokenValue ++ "\t" ++ showTokenType tokenType
+
 -- Convert TokenType to string representation
 showTokenType :: TokenType -> String
 showTokenType tokenType = case tokenType of
@@ -69,7 +78,7 @@ showTokenType tokenType = case tokenType of
                             Keys kw -> keyType kw
                             Variable -> "Variable"
                             _ -> show tokenType  -- For all other types, use the default show instance
-  
+
 operatorType :: String -> String
 operatorType "+" = "Suma"
 operatorType "-" = "Resta"
@@ -78,12 +87,12 @@ operatorType "/" = "Division"
 operatorType "=" = "Asignacion"
 operatorType ";" = "Punto y coma"
 operatorType other = other  -- Default to the original operator symbol for any other operator
-  
+
 parentesisType :: String -> String
 parentesisType "(" = "Parentesis que abre"
 parentesisType ")" = "Parentesis que cierra"
 parentesisType other = other  -- Default to the original operator symbol for any other operator
--- Get the specific operation name for an operator token: Keys
+
 keyType :: String -> String
 keyType "{" = "Llave que abre"
 keyType "}" = "Llave que cierra"
@@ -92,3 +101,185 @@ keyType other = other  -- Default to the original operator symbol for any other 
 -- Helper function to pad a string to the right with spaces
 padRight :: Int -> String -> String
 padRight n s = s ++ replicate (n - length s) ' '
+
+-- Parser part
+data AST = Program [AST]
+         | Principal [AST]
+         | Block [AST]
+         | VarDecl String AST
+         | AssignExpr AST AST
+         | Var String
+         | IntConst Integer
+         | RealConst Double
+         | Expr AST AST AST
+         | Term AST AST
+         | Factor AST
+         deriving (Show, Eq)
+
+type TokenParser a = Parsec [Token] () a
+
+parseProgram :: TokenParser AST
+parseProgram = do
+    debugPrint "Entering parseProgram"
+    token <- parseToken (Token (Keyword "Programa") "Programa")
+    debugPrintWithToken "Read token" token
+    parseToken (Token (Keys "{") "{")
+    principal <- parsePrincipal
+    parseToken (Token (Keys "}") "}")
+    debugPrint "Exiting parseProgram"
+    return $ Program [principal]
+
+parsePrincipal :: TokenParser AST
+parsePrincipal = do
+    debugPrint "Entering parsePrincipal"
+    token <- parseToken (Token (Keyword "principal") "principal")
+    debugPrintWithToken "Read token" token
+    parseToken (Token (Keys "{") "{")
+    block <- parseBlock
+    parseToken (Token (Keys "}") "}")
+    debugPrint "Exiting parsePrincipal"
+    return $ Principal block
+
+parseBlock :: TokenParser [AST]
+parseBlock = do
+    debugPrint "Entering parseBlock"
+    stmts <- many parseStatement
+    debugPrint "Exiting parseBlock"
+    return stmts
+
+parseStatement :: TokenParser AST
+parseStatement = do
+    debugPrint "Entering parseStatement"
+    stmt <- try parseVarDecl <|> parseExprStmt
+    debugPrint "Exiting parseStatement"
+    return stmt
+
+parseVarDecl :: TokenParser AST
+parseVarDecl = do
+    debugPrint "Entering parseVarDecl"
+    t <- parseTokenType
+    debugPrintWithToken "Parsed token type" (Token (Keyword t) t)
+    var <- parseVariableName
+    debugPrintWithToken "Parsed variable name" (Token Variable var)
+    assignToken <- parseToken (Token Assign "=")
+    debugPrintWithToken "Parsed assignment operator" assignToken
+    expr <- parseExpression
+    debugPrint "Parsed expression"
+    semicolonToken <- parseToken (Token (Operator ";") ";")
+    debugPrintWithToken "Parsed semicolon" semicolonToken
+    debugPrint "Exiting parseVarDecl"
+    return $ VarDecl t (AssignExpr (Var var) expr)
+
+
+parseExprStmt :: TokenParser AST
+parseExprStmt = do
+    debugPrint "Entering parseExprStmt"
+    expr <- parseExpression
+    semicolonToken <- parseToken (Token (Operator ";") ";")
+    debugPrintWithToken "Parsed semicolon" semicolonToken
+    debugPrint "Exiting parseExprStmt"
+    return expr
+
+parseTokenType :: TokenParser String
+parseTokenType = tokenPrim show updatePos testType
+  where
+    testType (Token (Keyword kw) _) | kw == "Entero" || kw == "Real" = Just kw
+    testType _ = Nothing
+
+parseExpression :: TokenParser AST
+parseExpression = do
+    debugPrint "Entering parseExpression"
+    t <- parseTerm
+    rest <- many (parseOpTerm "+" <|> parseOpTerm "-")
+    debugPrint "Exiting parseExpression"
+    return $ foldl (\acc (op, term) -> Expr acc (Var op) term) t rest
+
+parseOpTerm :: String -> TokenParser (String, AST)
+parseOpTerm op = do
+    debugPrint $ "Entering parseOpTerm with operator: " ++ op
+    token <- parseToken (Token (Operator op) op)
+    debugPrintWithToken "Read token" token
+    t <- parseTerm
+    debugPrint "Exiting parseOpTerm"
+    return (op, t)
+
+parseTerm :: TokenParser AST
+parseTerm = do
+    debugPrint "Entering parseTerm"
+    f <- parseFactor
+    rest <- many (parseOpFactor "*" <|> parseOpFactor "/")
+    debugPrint "Exiting parseTerm"
+    return $ foldl (\acc (op, factor) -> Expr acc (Var op) factor) f rest
+
+parseOpFactor :: String -> TokenParser (String, AST)
+parseOpFactor op = do
+    debugPrint $ "Entering parseOpFactor with operator: " ++ op
+    token <- parseToken (Token (Operator op) op)
+    debugPrintWithToken "Read token" token
+    f <- parseFactor
+    debugPrint "Exiting parseOpFactor"
+    return (op, f)
+
+parseFactor :: TokenParser AST
+parseFactor = do
+    debugPrint "Entering parseFactor"
+    factor <- parseParenExpr <|> parseNumber <|> parseVariable
+    debugPrint "Exiting parseFactor"
+    return $ Factor factor
+
+parseParenExpr :: TokenParser AST
+parseParenExpr = do
+    debugPrint "Entering parseParenExpr"
+    parseToken (Token (Parenthesis "(") "(")
+    expr <- parseExpression
+    parseToken (Token (Parenthesis ")") ")")
+    debugPrint "Exiting parseParenExpr"
+    return expr
+
+parseNumber :: TokenParser AST
+parseNumber = do
+    debugPrint "Entering parseNumber"
+    token <- tokenPrim show updatePos testNum
+    debugPrintWithToken "Read token" token
+    debugPrint "Exiting parseNumber"
+    return $ case tokenType token of
+        Integer -> IntConst (read (tokenValue token))
+        Real -> RealConst (read (tokenValue token))
+  where
+    testNum t@(Token Integer _) = Just t
+    testNum t@(Token Real _) = Just t
+    testNum _ = Nothing
+
+parseVariable :: TokenParser AST
+parseVariable = do
+    debugPrint "Entering parseVariable"
+    token <- tokenPrim show updatePos testVar
+    debugPrintWithToken "Read token" token
+    debugPrint "Exiting parseVariable"
+    return $ Var (tokenValue token)
+  where
+    testVar t@(Token Variable _) = Just t
+    testVar _ = Nothing
+
+parseVariableName :: TokenParser String
+parseVariableName = tokenPrim show updatePos testVar
+  where
+    testVar (Token Variable var) = Just var
+    testVar _ = Nothing
+
+parseToken :: Token -> TokenParser Token
+parseToken expected = tokenPrim show updatePos testTok
+  where
+    testTok actual
+        | tokenType actual == tokenType expected = Just actual
+        | otherwise = Nothing
+
+updatePos :: SourcePos -> Token -> [Token] -> SourcePos
+updatePos pos _ (tok:_) = incSourceColumn pos (length (tokenValue tok))
+updatePos pos _ _ = pos
+
+debugPrint :: String -> TokenParser ()
+debugPrint msg = trace (msg ++ "\n") (return ())
+
+debugPrintWithToken :: String -> Token -> TokenParser ()
+debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (return ())
