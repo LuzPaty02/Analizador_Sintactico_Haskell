@@ -48,9 +48,8 @@ isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+' || c == '-'
 
 
 
--- Main function
 main :: IO ()
-main = do  
+main = do
     args <- getArgs
     case args of
         [fileName] -> do
@@ -61,9 +60,9 @@ main = do
             mapM_ printToken tokens
             case parse parseProgram "" tokens of
                 Left err  -> print err
-                Right ast -> print ast
-        
+                Right ast -> putStrLn $ printAST ast
         _ -> putStrLn "Usage: programName fileName"
+
 
 -- Print token with its TokenType
 printToken :: Token -> IO ()
@@ -298,3 +297,29 @@ debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (retur
 
 updatePos :: SourcePos -> Token -> [Token] -> SourcePos
 updatePos pos _ _ = pos
+
+
+-- Print the AST in a hierarchical manner with tree characters
+printAST :: AST -> String
+printAST = unlines . draw
+  where
+    draw :: AST -> [String]
+    draw (Program asts)       = "Program" : drawChildren asts
+    draw (Principal asts)     = "Principal" : drawChildren asts
+    draw (Block asts)         = "Block" : drawChildren asts
+    draw (VarDecl t ast)      = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast)
+    draw (AssignExpr var expr)= ["AssignExpr"] ++ shift "├─ " "│  " (draw var) ++ shift "└─ " "   " (draw expr)
+    draw (Var name)           = ["Var " ++ name]
+    draw (IntConst val)       = ["IntConst " ++ show val]
+    draw (RealConst val)      = ["RealConst " ++ show val]
+    draw (Expr left op right) = ["Expr"] ++ shift "├─ " "│  " (draw left) ++ shift "├─ " "│  " (draw op) ++ shift "└─ " "   " (draw right)
+    draw (Term left right)    = ["Term"] ++ shift "├─ " "│  " (draw left) ++ shift "└─ " "   " (draw right)
+    draw (Factor ast)         = ["Factor"] ++ shift "└─ " "   " (draw ast)
+    
+    drawChildren :: [AST] -> [String]
+    drawChildren []     = []
+    drawChildren [t]    = shift "└─ " "   " (draw t)
+    drawChildren (t:ts) = shift "├─ " "│  " (draw t) ++ drawChildren ts
+
+    shift :: String -> String -> [String] -> [String]
+    shift first other = zipWith (++) (first : repeat other)
