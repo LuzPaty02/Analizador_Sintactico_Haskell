@@ -108,7 +108,7 @@ padRight n s = s ++ replicate (n - length s) ' '
 data AST = Program [AST]
          | Principal [AST]
          | Block [AST]
-         | VarDecl String AST
+         | VarDecl String AST AST  -- Added AST for Semicolon
          | AssignExpr AST AST
          | Var String
          | IntConst Integer
@@ -116,7 +116,11 @@ data AST = Program [AST]
          | Expr AST AST AST
          | Term AST AST
          | Factor AST
+         | ParenExpr AST
+         | Semicolon
          deriving (Show, Eq)
+
+
 
 type TokenParser a = Parsec [Token] () a
 
@@ -145,9 +149,7 @@ parsePrincipal = do
     block <- parseBlock
     parseToken (Token (Keys "}") "}")
     debugPrint "Exiting parsePrincipal"
-    return $ Principal block
-
-
+    return $ Principal [Block block]
 
 parseBlock :: TokenParser [AST]
 parseBlock = do
@@ -177,7 +179,7 @@ parseVarDecl = do
     semicolonToken <- parseToken (Token (Operator ";") ";")
     debugPrintWithToken "Parsed semicolon" semicolonToken
     debugPrint "Exiting parseVarDecl"
-    return $ VarDecl t (AssignExpr (Var var) expr)
+    return $ VarDecl t (AssignExpr (Var var) expr) Semicolon
 
 parseExprStmt :: TokenParser AST
 parseExprStmt = do
@@ -186,7 +188,8 @@ parseExprStmt = do
     semicolonToken <- parseToken (Token (Operator ";") ";")
     debugPrintWithToken "Parsed semicolon" semicolonToken
     debugPrint "Exiting parseExprStmt"
-    return expr
+    return $ Expr expr (Var ";") Semicolon
+
 
 parseTokenType :: TokenParser String
 parseTokenType = tokenPrim show updatePos testType
@@ -241,10 +244,8 @@ parseParenExpr = try $ do
     _ <- parseToken (Token (Parenthesis "(") "(")
     expr <- parseExpression
     _ <- parseToken (Token (Parenthesis ")") ")")
-    f<- parseFactor
     debugPrint "Exiting parseParenExpr"
-    return expr
-
+    return $ ParenExpr expr
 
 parseNumber :: TokenParser AST
 parseNumber = try $ do
@@ -261,8 +262,6 @@ parseNumber = try $ do
     testNum t@(Token Real _) = Just t
     testNum _ = Nothing
 
-
-
 parseVariable :: TokenParser AST
 parseVariable = do
     debugPrint "Entering parseVariable"
@@ -273,7 +272,6 @@ parseVariable = do
   where
     testVar t@(Token Variable _) = Just t
     testVar _ = Nothing
-
 
 -- Implement parseVariableName function
 parseVariableName :: TokenParser String
@@ -298,7 +296,6 @@ debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (retur
 updatePos :: SourcePos -> Token -> [Token] -> SourcePos
 updatePos pos _ _ = pos
 
-
 -- Print the AST in a hierarchical manner with tree characters
 printAST :: AST -> String
 printAST = unlines . draw
@@ -306,8 +303,8 @@ printAST = unlines . draw
     draw :: AST -> [String]
     draw (Program asts)       = "Program" : drawChildren asts
     draw (Principal asts)     = "Principal" : drawChildren asts
-    draw (Block asts)         = "Block" : drawChildren asts
-    draw (VarDecl t ast)      = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast)
+    draw (Block asts)         = "Block {}" : drawChildren asts
+    draw (VarDecl t ast semicolon) = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast) ++ shift "└─ " "   " (draw semicolon)
     draw (AssignExpr var expr)= ["AssignExpr"] ++ shift "├─ " "│  " (draw var) ++ shift "└─ " "   " (draw expr)
     draw (Var name)           = ["Var " ++ name]
     draw (IntConst val)       = ["IntConst " ++ show val]
@@ -315,7 +312,9 @@ printAST = unlines . draw
     draw (Expr left op right) = ["Expr"] ++ shift "├─ " "│  " (draw left) ++ shift "├─ " "│  " (draw op) ++ shift "└─ " "   " (draw right)
     draw (Term left right)    = ["Term"] ++ shift "├─ " "│  " (draw left) ++ shift "└─ " "   " (draw right)
     draw (Factor ast)         = ["Factor"] ++ shift "└─ " "   " (draw ast)
-    
+    draw (ParenExpr ast)      = ["ParenExpr"] ++ shift "└─ " "   " (draw ast)
+    draw Semicolon            = ["Semicolon ;"]
+
     drawChildren :: [AST] -> [String]
     drawChildren []     = []
     drawChildren [t]    = shift "└─ " "   " (draw t)
@@ -323,3 +322,4 @@ printAST = unlines . draw
 
     shift :: String -> String -> [String] -> [String]
     shift first other = zipWith (++) (first : repeat other)
+
