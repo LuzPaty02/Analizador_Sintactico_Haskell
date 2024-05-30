@@ -1,6 +1,6 @@
 Programa {
 
-  principal 
+  principal ()
 
     {
 
