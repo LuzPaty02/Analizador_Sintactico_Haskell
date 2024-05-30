@@ -137,11 +137,18 @@ parsePrincipal = do
     debugPrint "Entering parsePrincipal"
     token <- parseToken (Token (Keyword "principal") "principal")
     debugPrintWithToken "Read token" token
+    -- Optional parentheses
+    _ <- optionMaybe $ do
+        parseToken (Token (Parenthesis "(") "(")
+        parseToken (Token (Parenthesis ")") ")")
+    -- Mandatory block with braces
     parseToken (Token (Keys "{") "{")
     block <- parseBlock
     parseToken (Token (Keys "}") "}")
     debugPrint "Exiting parsePrincipal"
     return $ Principal block
+
+
 
 parseBlock :: TokenParser [AST]
 parseBlock = do
