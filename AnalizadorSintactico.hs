@@ -57,7 +57,9 @@ main = do
             let tokens = concatMap tokenize (lines content)
             mapM_ printToken tokens
             case parse parseProgram "" tokens of
-                Left err  -> print err
+                Left err  -> do
+                    putStrLn "Syntax error:"
+                    print err
                 Right ast -> do
                     putStrLn "Abstract Syntax Tree: "
                     putStrLn $ printAST ast
@@ -294,7 +296,7 @@ debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (retur
 updatePos :: SourcePos -> Token -> [Token] -> SourcePos
 updatePos pos _ _ = pos
 
--- Print the AST with tree characters
+-- Print the AST in a hierarchical manner with tree characters
 printAST :: AST -> String
 printAST = unlines . draw
   where
