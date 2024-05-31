@@ -118,6 +118,7 @@ data AST = Program [AST]
          | Term AST AST
          | Factor AST
          | ParenExpr AST
+         | OperatorNode String
          | Semicolon AST
          deriving (Show, Eq)
 
@@ -202,7 +203,7 @@ parseExpression = do
     t <- parseTerm
     rest <- many (parseOpTerm "+" <|> parseOpTerm "-")
     debugPrint "Exiting parseExpression"
-    return $ foldl (\acc (op, term) -> Expr acc (Var op) term) t rest
+    return $ foldl (\acc (op, term) -> Expr acc (OperatorNode op) term) t rest
 
 parseOpTerm :: String -> TokenParser (String, AST)
 parseOpTerm op = do
@@ -218,7 +219,7 @@ parseTerm = do
     f <- parseFactor
     rest <- many (parseOpFactor "*" <|> parseOpFactor "/")
     debugPrint "Exiting parseTerm"
-    return $ foldl (\acc (op, factor) -> Expr acc (Var op) factor) f rest
+    return $ foldl (\acc (op, factor) -> Expr acc (OperatorNode op) factor) f rest
 
 parseOpFactor :: String -> TokenParser (String, AST)
 parseOpFactor op = do
@@ -293,7 +294,7 @@ debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (retur
 updatePos :: SourcePos -> Token -> [Token] -> SourcePos
 updatePos pos _ _ = pos
 
--- Print the AST in a hierarchical manner with tree characters
+-- Print the AST with tree characters
 printAST :: AST -> String
 printAST = unlines . draw
   where
@@ -309,7 +310,8 @@ printAST = unlines . draw
     draw (Expr left op right) = ["Expr"] ++ shift "├─ " "│  " (draw left) ++ shift "├─ " "│  " (draw op) ++ shift "└─ " "   " (draw right)
     draw (Term left right)    = ["Term"] ++ shift "├─ " "│  " (draw left) ++ shift "└─ " "   " (draw right)
     draw (Factor ast)         = ["Factor"] ++ shift "└─ " "   " (draw ast)
-    draw (ParenExpr ast)      = ["ParenExpr"] ++ shift "└─ " "   " (draw ast)
+    draw (ParenExpr ast)      = ["ParenExpr ()"] ++ shift "└─ " "   " (draw ast)
+    draw (OperatorNode op)    = ["Operator " ++ op]
     draw (Semicolon ast)      = draw ast ++ ["└─ Semicolon ;"]
 
     drawChildren :: [AST] -> [String]

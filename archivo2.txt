@@ -8,7 +8,7 @@ Programa {
     
            Real b = 5.8E-8;
 
-           Entero serie = a * b * c + 9;
+           Entero serie = a * (b * c) + 9;
 
     }
 
