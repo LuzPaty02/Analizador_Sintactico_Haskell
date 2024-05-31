@@ -1,15 +1,4 @@
 Programa {
-
-  principal 
-
-    {
-
-           a = 4;
-
-           Real b = 5.8E-8;
-
-           Entero serie = a *  * c;
-
-    }
-
+  principal {
+  }
 }

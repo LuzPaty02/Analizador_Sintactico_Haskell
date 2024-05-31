@@ -1,0 +1,10 @@
+Programa {
+  principal {
+    {
+      Entero a = 4;
+    }
+    {
+      Real b = 5.8;
+    }
+  }
+}

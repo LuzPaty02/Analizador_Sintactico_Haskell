@@ -4,7 +4,6 @@ import Text.Parsec
 import Text.Parsec.String (Parser)
 import Text.Parsec.Token (GenTokenParser(..))
 import Text.Parsec.Language (emptyDef)
-import Debug.Trace (trace)
 
 -- Define token types
 data TokenType = Variable | Assign | Integer | Real | Operator String | Parenthesis String | Comment | Keyword String | Keys String
@@ -80,7 +79,7 @@ showTokenType tokenType = case tokenType of
                             Keyword kw -> kw
                             Keys kw -> keyType kw
                             Variable -> "Variable"
-                            _ -> show tokenType  -- For all other types, use the default show instance
+                            _ -> show tokenType  -- For all other types
 
 operatorType :: String -> String
 operatorType "+" = "Suma"
@@ -128,21 +127,15 @@ type TokenParser a = Parsec [Token] () a
 
 parseProgram :: TokenParser AST
 parseProgram = do
-    debugPrint "\nDebugging process: "
-    debugPrint "Entering parseProgram"
-    token <- parseToken (Token (Keyword "Programa") "Programa")
-    debugPrintWithToken "Read token" token
+    _ <- parseToken (Token (Keyword "Programa") "Programa")
     parseToken (Token (Keys "{") "{")
     principal <- parsePrincipal
     parseToken (Token (Keys "}") "}")
-    debugPrint "Exiting parseProgram"
     return $ Program [principal]
 
 parsePrincipal :: TokenParser AST
 parsePrincipal = do
-    debugPrint "Entering parsePrincipal"
-    token <- parseToken (Token (Keyword "principal") "principal")
-    debugPrintWithToken "Read token" token
+    _ <- parseToken (Token (Keyword "principal") "principal")
     -- Optional parentheses
     _ <- optionMaybe $ do
         parseToken (Token (Parenthesis "(") "(")
@@ -151,46 +144,29 @@ parsePrincipal = do
     parseToken (Token (Keys "{") "{")
     block <- parseBlock
     parseToken (Token (Keys "}") "}")
-    debugPrint "Exiting parsePrincipal"
     return $ Principal [Block block]
 
 parseBlock :: TokenParser [AST]
-parseBlock = do
-    debugPrint "Entering parseBlock"
-    stmts <- many parseStatement
-    debugPrint "Exiting parseBlock"
-    return stmts
+parseBlock = many parseStatement
 
 parseStatement :: TokenParser AST
 parseStatement = do
-    debugPrint "Entering parseStatement"
     stmt <- try parseVarDecl <|> parseExprStmt
     semicolonToken <- parseToken (Token (Operator ";") ";")
-    debugPrintWithToken "Parsed semicolon" semicolonToken
-    debugPrint "Exiting parseStatement"
     return $ Semicolon stmt
 
 parseVarDecl :: TokenParser AST
 parseVarDecl = do
-    debugPrint "Entering parseVarDecl"
     t <- parseTokenType
-    debugPrintWithToken "Parsed token type" (Token (Keyword t) t)
     var <- parseVariableName
-    debugPrintWithToken "Parsed variable name" (Token Variable var)
-    assignToken <- parseToken (Token Assign "=")
-    debugPrintWithToken "Parsed assignment operator" assignToken
+    _ <- parseToken (Token Assign "=")
     expr <- parseExpression
-    debugPrint "Parsed expression"
-    debugPrint "Exiting parseVarDecl"
     return $ VarDecl t (AssignExpr (Var var) expr)
 
 parseExprStmt :: TokenParser AST
 parseExprStmt = do
-    debugPrint "Entering parseExprStmt"
     expr <- parseExpression
-    semicolonToken <- parseToken (Token (Operator ";") ";")
-    debugPrintWithToken "Parsed semicolon" semicolonToken
-    debugPrint "Exiting parseExprStmt"
+    _ <- parseToken (Token (Operator ";") ";")
     return expr
 
 parseTokenType :: TokenParser String
@@ -201,61 +177,44 @@ parseTokenType = tokenPrim show updatePos testType
 
 parseExpression :: TokenParser AST
 parseExpression = do
-    debugPrint "Entering parseExpression"
     t <- parseTerm
     rest <- many (parseOpTerm "+" <|> parseOpTerm "-")
-    debugPrint "Exiting parseExpression"
     return $ foldl (\acc (op, term) -> Expr acc (OperatorNode op) term) t rest
 
 parseOpTerm :: String -> TokenParser (String, AST)
 parseOpTerm op = do
-    debugPrint $ "Entering parseOpTerm with operator: " ++ op
     parseToken (Token (Operator op) op)
     t <- parseTerm
-    debugPrint "Exiting parseOpTerm"
     return (op, t)
 
 parseTerm :: TokenParser AST
 parseTerm = do
-    debugPrint "Entering parseTerm"
     f <- parseFactor
     rest <- many (parseOpFactor "*" <|> parseOpFactor "/")
-    debugPrint "Exiting parseTerm"
     return $ foldl (\acc (op, factor) -> Expr acc (OperatorNode op) factor) f rest
 
 parseOpFactor :: String -> TokenParser (String, AST)
 parseOpFactor op = do
-    debugPrint $ "Entering parseOpFactor with operator: " ++ op
     parseToken (Token (Operator op) op)
     f <- parseFactor
-    debugPrint "Exiting parseOpFactor"
     return (op, f)
 
 parseFactor :: TokenParser AST
-parseFactor = do
-    debugPrint "Entering parseFactor"
-    factor <- try parseParenExpr <|> try parseNumber <|> parseVariable
-    debugPrint "Exiting parseFactor"
-    return factor
+parseFactor = try parseParenExpr <|> try parseNumber <|> parseVariable
 
 parseParenExpr :: TokenParser AST
-parseParenExpr = try $ do
-    debugPrint "Entering parseParenExpr"
+parseParenExpr = do
     parseToken (Token (Parenthesis "(") "(")
     expr <- parseExpression
     parseToken (Token (Parenthesis ")") ")")
-    debugPrint "Exiting parseParenExpr"
     return $ ParenExpr expr
 
 parseNumber :: TokenParser AST
-parseNumber = try $ do
-    debugPrint "Entering parseNumber"
+parseNumber = do
     token <- tokenPrim show updatePos testNum
-    debugPrintWithToken "Read number token" token
     let ast = case tokenType token of
                 Integer -> IntConst (read (tokenValue token))
                 Real -> RealConst (read (tokenValue token))
-    debugPrint "Exiting parseNumber"
     return ast
   where
     testNum t@(Token Integer _) = Just t
@@ -264,10 +223,7 @@ parseNumber = try $ do
 
 parseVariable :: TokenParser AST
 parseVariable = do
-    debugPrint "Entering parseVariable"
     token <- tokenPrim show updatePos testVar
-    debugPrintWithToken "Read variable token" token
-    debugPrint "Exiting parseVariable"
     return $ Var (tokenValue token)
   where
     testVar t@(Token Variable _) = Just t
@@ -285,13 +241,7 @@ parseToken expectedToken = tokenPrim show updatePos testToken
   where
     testToken token
         | token == expectedToken = Just token
-        | otherwise = trace ("Expected: " ++ show expectedToken ++ ", but got: " ++ show token) Nothing
-
-debugPrint :: String -> TokenParser ()
-debugPrint msg = trace (msg ++ "\n") (return ())
-
-debugPrintWithToken :: String -> Token -> TokenParser ()
-debugPrintWithToken msg token = trace (msg ++ ": " ++ show token ++ "\n") (return ())
+        | otherwise = Nothing
 
 updatePos :: SourcePos -> Token -> [Token] -> SourcePos
 updatePos pos _ _ = pos
