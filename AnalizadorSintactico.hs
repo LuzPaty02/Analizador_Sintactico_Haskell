@@ -45,9 +45,7 @@ getToken tokenValue
 isDigitOrDot :: Char -> Bool
 isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+' || c == '-'
 
-
-
-
+--Main function
 main :: IO ()
 main = do
     args <- getArgs
@@ -60,8 +58,11 @@ main = do
             mapM_ printToken tokens
             case parse parseProgram "" tokens of
                 Left err  -> print err
-                Right ast -> putStrLn $ printAST ast
+                Right ast -> do
+                    putStrLn "Abstract Syntax Tree: "
+                    putStrLn $ printAST ast
         _ -> putStrLn "Usage: programName fileName"
+
 
 
 -- Print token with its TokenType
@@ -104,7 +105,9 @@ keyType other = other  -- Default to the original operator symbol for any other 
 padRight :: Int -> String -> String
 padRight n s = s ++ replicate (n - length s) ' '
 
--- Parser part
+-- Parser part <333
+
+-- Define the AST data structure
 data AST = Program [AST]
          | Principal [AST]
          | Block [AST]
@@ -126,6 +129,7 @@ type TokenParser a = Parsec [Token] () a
 
 parseProgram :: TokenParser AST
 parseProgram = do
+    debugPrint "\nDebugging process: "
     debugPrint "Entering parseProgram"
     token <- parseToken (Token (Keyword "Programa") "Programa")
     debugPrintWithToken "Read token" token
@@ -238,6 +242,7 @@ parseFactor = do
     debugPrint "Exiting parseFactor"
     return factor
 
+
 parseParenExpr :: TokenParser AST
 parseParenExpr = try $ do
     debugPrint "Entering parseParenExpr"
@@ -246,6 +251,7 @@ parseParenExpr = try $ do
     _ <- parseToken (Token (Parenthesis ")") ")")
     debugPrint "Exiting parseParenExpr"
     return $ ParenExpr expr
+
 
 parseNumber :: TokenParser AST
 parseNumber = try $ do
@@ -304,6 +310,7 @@ printAST = unlines . draw
     draw (Program asts)       = "Program" : drawChildren asts
     draw (Principal asts)     = "Principal" : drawChildren asts
     draw (Block asts)         = "Block {}" : drawChildren asts
+    draw (ParenExpr ast)      = ["ParenExpr ()"] ++ shift "└─ " "   " (draw ast)
     draw (VarDecl t ast semicolon) = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast) ++ shift "└─ " "   " (draw semicolon)
     draw (AssignExpr var expr)= ["AssignExpr"] ++ shift "├─ " "│  " (draw var) ++ shift "└─ " "   " (draw expr)
     draw (Var name)           = ["Var " ++ name]
@@ -312,7 +319,6 @@ printAST = unlines . draw
     draw (Expr left op right) = ["Expr"] ++ shift "├─ " "│  " (draw left) ++ shift "├─ " "│  " (draw op) ++ shift "└─ " "   " (draw right)
     draw (Term left right)    = ["Term"] ++ shift "├─ " "│  " (draw left) ++ shift "└─ " "   " (draw right)
     draw (Factor ast)         = ["Factor"] ++ shift "└─ " "   " (draw ast)
-    draw (ParenExpr ast)      = ["ParenExpr"] ++ shift "└─ " "   " (draw ast)
     draw Semicolon            = ["Semicolon ;"]
 
     drawChildren :: [AST] -> [String]
