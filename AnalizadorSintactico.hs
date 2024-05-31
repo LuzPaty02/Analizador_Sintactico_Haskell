@@ -45,7 +45,7 @@ getToken tokenValue
 isDigitOrDot :: Char -> Bool
 isDigitOrDot c = isDigit c || c == '.' || c == 'E' || c == '+' || c == '-'
 
---Main function
+-- Main function
 main :: IO ()
 main = do
     args <- getArgs
@@ -62,8 +62,6 @@ main = do
                     putStrLn "Abstract Syntax Tree: "
                     putStrLn $ printAST ast
         _ -> putStrLn "Usage: programName fileName"
-
-
 
 -- Print token with its TokenType
 printToken :: Token -> IO ()
@@ -105,13 +103,13 @@ keyType other = other  -- Default to the original operator symbol for any other 
 padRight :: Int -> String -> String
 padRight n s = s ++ replicate (n - length s) ' '
 
--- Parser part <333
+-- Parser part
 
 -- Define the AST data structure
 data AST = Program [AST]
          | Principal [AST]
          | Block [AST]
-         | VarDecl String AST AST  -- Added AST for Semicolon
+         | VarDecl String AST
          | AssignExpr AST AST
          | Var String
          | IntConst Integer
@@ -120,10 +118,8 @@ data AST = Program [AST]
          | Term AST AST
          | Factor AST
          | ParenExpr AST
-         | Semicolon
+         | Semicolon AST
          deriving (Show, Eq)
-
-
 
 type TokenParser a = Parsec [Token] () a
 
@@ -166,8 +162,10 @@ parseStatement :: TokenParser AST
 parseStatement = do
     debugPrint "Entering parseStatement"
     stmt <- try parseVarDecl <|> parseExprStmt
+    semicolonToken <- parseToken (Token (Operator ";") ";")
+    debugPrintWithToken "Parsed semicolon" semicolonToken
     debugPrint "Exiting parseStatement"
-    return stmt
+    return $ Semicolon stmt
 
 parseVarDecl :: TokenParser AST
 parseVarDecl = do
@@ -180,10 +178,8 @@ parseVarDecl = do
     debugPrintWithToken "Parsed assignment operator" assignToken
     expr <- parseExpression
     debugPrint "Parsed expression"
-    semicolonToken <- parseToken (Token (Operator ";") ";")
-    debugPrintWithToken "Parsed semicolon" semicolonToken
     debugPrint "Exiting parseVarDecl"
-    return $ VarDecl t (AssignExpr (Var var) expr) Semicolon
+    return $ VarDecl t (AssignExpr (Var var) expr)
 
 parseExprStmt :: TokenParser AST
 parseExprStmt = do
@@ -192,8 +188,7 @@ parseExprStmt = do
     semicolonToken <- parseToken (Token (Operator ";") ";")
     debugPrintWithToken "Parsed semicolon" semicolonToken
     debugPrint "Exiting parseExprStmt"
-    return $ Expr expr (Var ";") Semicolon
-
+    return expr
 
 parseTokenType :: TokenParser String
 parseTokenType = tokenPrim show updatePos testType
@@ -212,8 +207,7 @@ parseExpression = do
 parseOpTerm :: String -> TokenParser (String, AST)
 parseOpTerm op = do
     debugPrint $ "Entering parseOpTerm with operator: " ++ op
-    token <- parseToken (Token (Operator op) op)
-    debugPrintWithToken "Read token" token
+    parseToken (Token (Operator op) op)
     t <- parseTerm
     debugPrint "Exiting parseOpTerm"
     return (op, t)
@@ -229,8 +223,7 @@ parseTerm = do
 parseOpFactor :: String -> TokenParser (String, AST)
 parseOpFactor op = do
     debugPrint $ "Entering parseOpFactor with operator: " ++ op
-    token <- parseToken (Token (Operator op) op)
-    debugPrintWithToken "Read token" token
+    parseToken (Token (Operator op) op)
     f <- parseFactor
     debugPrint "Exiting parseOpFactor"
     return (op, f)
@@ -242,16 +235,14 @@ parseFactor = do
     debugPrint "Exiting parseFactor"
     return factor
 
-
 parseParenExpr :: TokenParser AST
 parseParenExpr = try $ do
     debugPrint "Entering parseParenExpr"
-    _ <- parseToken (Token (Parenthesis "(") "(")
+    parseToken (Token (Parenthesis "(") "(")
     expr <- parseExpression
-    _ <- parseToken (Token (Parenthesis ")") ")")
+    parseToken (Token (Parenthesis ")") ")")
     debugPrint "Exiting parseParenExpr"
     return $ ParenExpr expr
-
 
 parseNumber :: TokenParser AST
 parseNumber = try $ do
@@ -310,8 +301,7 @@ printAST = unlines . draw
     draw (Program asts)       = "Program" : drawChildren asts
     draw (Principal asts)     = "Principal" : drawChildren asts
     draw (Block asts)         = "Block {}" : drawChildren asts
-    draw (ParenExpr ast)      = ["ParenExpr ()"] ++ shift "└─ " "   " (draw ast)
-    draw (VarDecl t ast semicolon) = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast) ++ shift "└─ " "   " (draw semicolon)
+    draw (VarDecl t ast)      = ["VarDecl " ++ t] ++ shift "├─ " "│  " (draw ast)
     draw (AssignExpr var expr)= ["AssignExpr"] ++ shift "├─ " "│  " (draw var) ++ shift "└─ " "   " (draw expr)
     draw (Var name)           = ["Var " ++ name]
     draw (IntConst val)       = ["IntConst " ++ show val]
@@ -319,7 +309,8 @@ printAST = unlines . draw
     draw (Expr left op right) = ["Expr"] ++ shift "├─ " "│  " (draw left) ++ shift "├─ " "│  " (draw op) ++ shift "└─ " "   " (draw right)
     draw (Term left right)    = ["Term"] ++ shift "├─ " "│  " (draw left) ++ shift "└─ " "   " (draw right)
     draw (Factor ast)         = ["Factor"] ++ shift "└─ " "   " (draw ast)
-    draw Semicolon            = ["Semicolon ;"]
+    draw (ParenExpr ast)      = ["ParenExpr"] ++ shift "└─ " "   " (draw ast)
+    draw (Semicolon ast)      = draw ast ++ ["└─ Semicolon ;"]
 
     drawChildren :: [AST] -> [String]
     drawChildren []     = []
@@ -328,4 +319,3 @@ printAST = unlines . draw
 
     shift :: String -> String -> [String] -> [String]
     shift first other = zipWith (++) (first : repeat other)
-
